@@ -9,6 +9,9 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 from launch_ros.actions import Node
+from xacro import process_file
+from launch.actions import TimerAction
+
 
 def generate_launch_description():
 
@@ -17,6 +20,22 @@ def generate_launch_description():
     # !!! MAKE SURE YOU SET THE PACKAGE NAME CORRECTLY !!!
 
     package_name='amr_sim_2511_zulu' #<--- CHANGE ME
+    
+
+    # Path to your controller YAML
+    controller_yaml = os.path.join(
+        get_package_share_directory(package_name),
+        'config',
+        'my_controllers.yaml'
+    )
+    
+    ros2_control_node = Node(
+    package='controller_manager',
+    executable='ros2_control_node',
+    parameters=[controller_yaml],
+    output='screen'
+    )
+        
 
     rsp = IncludeLaunchDescription(
                 PythonLaunchDescriptionSource([os.path.join(
@@ -38,6 +57,30 @@ def generate_launch_description():
                '-entity', 'my_bot'],
         output='screen')
     
+    	# Launch the Diff_Controller
+    diff_drive_spawner = Node(
+        package='controller_manager', 
+        executable='spawner', 
+        arguments=['diff_cont'])
+		
+		# Launch the Joint_Broadcaster
+    joint_broad_spawner = Node(
+        package='controller_manager', 
+        executable='spawner', 
+        arguments=['joint_broad'])
+    
+
+    delayed_diff_drive_spawner = TimerAction(
+        period=5.0,  # seconds
+        actions=[diff_drive_spawner]
+    )
+
+    delayed_joint_broad_spawner = TimerAction(
+        period=5.0,  # seconds
+        actions=[joint_broad_spawner]
+)
+    
+    
     joystick = IncludeLaunchDescription(
                 PythonLaunchDescriptionSource([os.path.join(
                     get_package_share_directory(package_name),'launch','joystick.launch.py'
@@ -50,7 +93,7 @@ def generate_launch_description():
     twist_mux_node = Node(package='twist_mux', 
                     executable='twist_mux',
                     parameters=[twist_mux_params,{'use_sim_time': True}],
-                    remappings=[('/cmd_vel_out','/cmd_vel')]
+                    remappings=[('/cmd_vel_out','/diff_cont/cmd_vel_unstamped')]
     )
 
 
@@ -59,6 +102,9 @@ def generate_launch_description():
         rsp,
         gazebo,
         spawn_entity,
+        delayed_diff_drive_spawner,
+        delayed_joint_broad_spawner,
+        ros2_control_node,
         joystick,
         twist_mux_node
     ])
